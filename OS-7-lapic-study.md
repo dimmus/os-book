@@ -168,4 +168,4 @@ After the OS-6 lines:
 
 ## Next milestone hint
 
-Next steps on real systems: **I/O APIC** routing for external IRQs, **MSI/MSI-X** for PCI, and optionally **x2APIC** (MSR-based access). The constant pieces are still **IDT discipline**, **correct EOI for the interrupt controller**, and **page tables that cover the MMIO you touch**.
+The `src-os/` tutorial continues with **[OS-8-page-fault-study.md](OS-8-page-fault-study.md)** (#PF, **`CR2`**, error-code stack, **`iretq`**). After that, **I/O APIC**, **MSI/MSI-X**, and **x2APIC** remain the natural hardware topics; the constant pieces are **IDT discipline**, **correct EOI**, **page tables for every access**, and **honest stack layouts per vector**.

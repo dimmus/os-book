@@ -4,7 +4,7 @@ This page walks through **milestone 2** after Stage 1 paging: install a **minima
 
 We keep the same overall boot story:
 
-`UEFI -> ExitBootServices -> kernel_entry -> HELLO INIT -> Stage 1 paging markers -> boot GDT + lretq -> Stage 2 serial markers -> lidt -> int3 -> #BP -> done -> Stage 3 PIC/PIT/IRQ0 -> done -> Stage 4 LAPIC timer -> done` (Stage 3: [OS-6-irq-pic-study.md](OS-6-irq-pic-study.md), Stage 4: [OS-7-lapic-study.md](OS-7-lapic-study.md))
+`UEFI -> ExitBootServices -> kernel_entry -> HELLO INIT -> Stage 1 paging markers -> boot GDT + lretq -> Stage 2 serial markers -> lidt -> int3 -> #BP -> done -> Stage 3 PIC/PIT/IRQ0 -> done -> Stage 4 LAPIC timer -> done -> Stage 5 #PF -> done` (Stage 3: [OS-6](OS-6-irq-pic-study.md), Stage 4: [OS-7](OS-7-lapic-study.md), Stage 5 / OS-8: [OS-8-page-fault-study.md](OS-8-page-fault-study.md))
 
 ## What we had before (after Stage 1)
 
@@ -171,7 +171,7 @@ This list mirrors the **exact source order** in `kernel_entry` (not the pedagogi
 24. **`write_stage2_int3_marker();`** — L675  
 25. **`asm volatile("int3" …)`** — L676  
 26. **`write_stage2_done();`** — L677 (runs after **`iretq`** from `isr_breakpoint`)  
-27. **`for (;;) { cli; hlt; }`** — final halt loop (today immediately after Stage 3 in `init.cpp`; line numbers drift—use the source).  
+27. **`for (;;) { cli; hlt; }`** — final halt loop (today after **Stage 5** in `init.cpp`; line numbers drift—use the source).  
 
 **Takeaway:** **`write_stage2_begin()`** is **after** **`lretq`** and **`ds`/`es`/`ss` reload**, not before. **Stage 3** (PIC/PIT/IRQ0) runs **after** **`write_stage2_done()`**; see [OS-6-irq-pic-study.md](OS-6-irq-pic-study.md) for the ordered list. A hang after **`STAGE 1: paging done`** but before **`STAGE 2: begin`** is in the **boot GDT** block (L617–L646); after **`STAGE 2: begin`**, look at **IDT / `int3` / ISR / `iretq`**.
 

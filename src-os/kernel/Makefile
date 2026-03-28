@@ -7,9 +7,9 @@ CLANG := clang++
 LD := $(or $(shell command -v ld.lld 2>/dev/null),$(shell command -v lld 2>/dev/null),$(shell command -v ld 2>/dev/null))
 OBJCOPY := llvm-objcopy
 
-KERNEL_OBJ := $(BUILD_DIR)/kernel_init.o $(BUILD_DIR)/idt_entry.o $(BUILD_DIR)/irq_entry.o $(BUILD_DIR)/lapic_entry.o
+KERNEL_OBJ := $(BUILD_DIR)/kernel_init.o $(BUILD_DIR)/idt_entry.o $(BUILD_DIR)/irq_entry.o $(BUILD_DIR)/lapic_entry.o $(BUILD_DIR)/pf_entry.o
 KERNEL_SRC := init.cpp
-KERNEL_ASM := idt_entry.S irq_entry.S lapic_entry.S
+KERNEL_ASM := idt_entry.S irq_entry.S lapic_entry.S pf_entry.S
 KERNEL_LD := ld.ld
 
 CLANG_TARGET ?= x86_64-unknown-elf
@@ -41,6 +41,11 @@ build:
 		-ffreestanding \
 		-nostdlib \
 		-c lapic_entry.S -o "$(BUILD_DIR)/lapic_entry.o"
+	$(CLANG) \
+		--target="$(CLANG_TARGET)" \
+		-ffreestanding \
+		-nostdlib \
+		-c pf_entry.S -o "$(BUILD_DIR)/pf_entry.o"
 	$(LD) -T "$(KERNEL_LD)" -o "$(KERNEL_ELF)" $(KERNEL_OBJ)
 	$(OBJCOPY) -O binary "$(KERNEL_ELF)" "$(KERNEL_RAW)"
 	@python3 pad_kernel_raw.py "$(KERNEL_ELF)" "$(KERNEL_RAW)"

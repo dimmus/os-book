@@ -9,6 +9,7 @@ This is a standalone tutorial milestone:
 - prints to COM1 (serial)
 - Stage 3: PIC + PIT + IRQ0 (see `OS-6-irq-pic-study.md` in the book tree)
 - Stage 4: Local APIC timer + MMIO map (see `OS-7-lapic-study.md`)
+- Stage 5: #PF handler + `CR2` probe (see `OS-8-page-fault-study.md`)
 - runs under QEMU with OVMF
 
 ## Run
@@ -63,6 +64,12 @@ STAGE 4: irq 1
 STAGE 4: irq 2
 STAGE 4: irq 3
 STAGE 4: done
+STAGE 5: begin
+STAGE 5: pf gate
+STAGE 5: probe
+STAGE 5: #PF dispatch
+STAGE 5: cr2 ok
+STAGE 5: done
 ```
 
 ## How `uefi/kernel_blob.inc` is produced
@@ -71,7 +78,7 @@ The UEFI app embeds the kernel as a generated C array.
 
 Build pipeline:
 
-1. `kernel/Makefile` builds `build/kernel.elf` from `kernel/init.cpp`, `idt_entry.S`, `irq_entry.S`, and `lapic_entry.S`.
+1. `kernel/Makefile` builds `build/kernel.elf` from `kernel/init.cpp`, `idt_entry.S`, `irq_entry.S`, `lapic_entry.S`, and `pf_entry.S`.
 2. `kernel/Makefile` converts ELF -> raw binary:
    - `llvm-objcopy -O binary build/kernel.elf build/kernel.raw`
    - `python3 kernel/pad_kernel_raw.py build/kernel.elf build/kernel.raw` pads to the first `PT_LOAD` `MemSiz` so `.bss` (e.g. the IDT array) is present in the blob (`llvm-objcopy` alone often stops at `FileSiz`).

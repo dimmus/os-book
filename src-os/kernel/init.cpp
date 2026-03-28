@@ -6,6 +6,7 @@
 // - Stage 2: IDT + #BP via int3 (see OS-5-idt-study.md)
 // - Stage 3: PIC remap + PIT + IRQ0 (vector 32), EOI (see OS-6-irq-pic-study.md)
 // - Stage 4: mask PIC, LAPIC MMIO timer (vector 34), LAPIC EOI (see OS-7-lapic-study.md)
+// - Stage 5: #PF (vector 14), error code frame, CR2 (see OS-8-page-fault-study.md)
 //
 // We print directly to COM1 and then halt forever.
 
@@ -15,6 +16,9 @@
 
 // Default local APIC MMIO page (Intel SDM / QEMU PC). Mapped in Stage 1.
 static constexpr uint64_t kLapicMmioPhys = 0xFEE00000ull;
+
+// Deliberately unmapped VA for Stage 5 #PF probe (not covered by Stage 1 tables).
+static constexpr uintptr_t kProbeUnmappedVa = 0xABC00000ull;
 
 static inline void write_hello_init() {
     // Print without using a NUL-terminated string in .rodata.
@@ -670,6 +674,165 @@ extern "C" void lapic_timer_dispatch(void) {
     }
 }
 
+// ----------------------------
+// Stage 5: page fault #PF (see OS-8-page-fault-study.md)
+// ----------------------------
+
+static inline void write_stage5_begin() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('5');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('b');
+    write_stage_char('e');
+    write_stage_char('g');
+    write_stage_char('i');
+    write_stage_char('n');
+    write_stage_char('\n');
+}
+
+static inline void write_stage5_pf_gate() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('5');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('p');
+    write_stage_char('f');
+    write_stage_char(' ');
+    write_stage_char('g');
+    write_stage_char('a');
+    write_stage_char('t');
+    write_stage_char('e');
+    write_stage_char('\n');
+}
+
+static inline void write_stage5_probe() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('5');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('p');
+    write_stage_char('r');
+    write_stage_char('o');
+    write_stage_char('b');
+    write_stage_char('e');
+    write_stage_char('\n');
+}
+
+static inline void write_stage5_dispatch() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('5');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('#');
+    write_stage_char('P');
+    write_stage_char('F');
+    write_stage_char(' ');
+    write_stage_char('d');
+    write_stage_char('i');
+    write_stage_char('s');
+    write_stage_char('p');
+    write_stage_char('a');
+    write_stage_char('t');
+    write_stage_char('c');
+    write_stage_char('h');
+    write_stage_char('\n');
+}
+
+static inline void write_stage5_cr2_ok() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('5');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('c');
+    write_stage_char('r');
+    write_stage_char('2');
+    write_stage_char(' ');
+    write_stage_char('o');
+    write_stage_char('k');
+    write_stage_char('\n');
+}
+
+static inline void write_stage5_cr2_bad() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('5');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('c');
+    write_stage_char('r');
+    write_stage_char('2');
+    write_stage_char(' ');
+    write_stage_char('b');
+    write_stage_char('a');
+    write_stage_char('d');
+    write_stage_char('\n');
+}
+
+static inline void write_stage5_done() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('5');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('d');
+    write_stage_char('o');
+    write_stage_char('n');
+    write_stage_char('e');
+    write_stage_char('\n');
+}
+
+// `movb (%rax), %al` after #PF — skip this many bytes before `iretq` (see OS-8).
+static constexpr uint64_t kPfProbeInsnLen = 2;
+
+extern "C" void isr_page_fault(void);
+
+extern "C" void page_fault_dispatch(uint64_t* frame) {
+    (void)frame[0];
+    write_stage5_dispatch();
+    uint64_t cr2 = 0;
+    asm volatile("mov %%cr2, %0" : "=r"(cr2));
+    if (cr2 == static_cast<uint64_t>(kProbeUnmappedVa)) {
+        write_stage5_cr2_ok();
+    } else {
+        write_stage5_cr2_bad();
+    }
+    frame[1] += kPfProbeInsnLen;
+}
+
 static inline uint64_t pageAlignDown(uint64_t x, uint64_t pageSize) {
     return x & ~(pageSize - 1);
 }
@@ -1110,6 +1273,20 @@ extern "C" void kernel_entry(
     lapic_mmio_write(kLapicRegLvtTimer, kLvtMasked);
 
     write_stage4_done();
+
+    // Stage 5: #PF with error code on stack; CR2 holds faulting linear address.
+    write_stage5_begin();
+    constexpr uint8_t kVectorPageFault = 14;
+    uint64_t pfHandler = kLinear(reinterpret_cast<const void*>(&isr_page_fault));
+    idtSetGate(idt, kVectorPageFault, pfHandler, csSel, kIdtTypeTrap64);
+    idtLoad(reinterpret_cast<uint64_t>(idt), static_cast<uint16_t>(sizeof(g_idt) - 1));
+    write_stage5_pf_gate();
+    write_stage5_probe();
+    {
+        uintptr_t probe = kProbeUnmappedVa;
+        asm volatile("movb (%%rax), %%al" : : "a"(probe) : "memory");
+    }
+    write_stage5_done();
 
     for (;;) {
         asm volatile("cli; hlt");
