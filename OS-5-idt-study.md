@@ -4,7 +4,7 @@ This page walks through **milestone 2** after Stage 1 paging: install a **minima
 
 We keep the same overall boot story:
 
-`UEFI -> ExitBootServices -> kernel_entry -> HELLO INIT -> Stage 1 paging markers -> boot GDT + lretq -> Stage 2 serial markers -> lidt -> int3 -> #BP -> done`
+`UEFI -> ExitBootServices -> kernel_entry -> HELLO INIT -> Stage 1 paging markers -> boot GDT + lretq -> Stage 2 serial markers -> lidt -> int3 -> #BP -> done -> Stage 3 PIC/PIT/IRQ0 -> done` (Stage 3: [OS-6-irq-pic-study.md](OS-6-irq-pic-study.md))
 
 ## What we had before (after Stage 1)
 
@@ -171,9 +171,9 @@ This list mirrors the **exact source order** in `kernel_entry` (not the pedagogi
 24. **`write_stage2_int3_marker();`** — L675  
 25. **`asm volatile("int3" …)`** — L676  
 26. **`write_stage2_done();`** — L677 (runs after **`iretq`** from `isr_breakpoint`)  
-27. **`for (;;) { cli; hlt; }`** — L679–L681  
+27. **`for (;;) { cli; hlt; }`** — final halt loop (today immediately after Stage 3 in `init.cpp`; line numbers drift—use the source).  
 
-**Takeaway:** **`write_stage2_begin()`** is **after** **`lretq`** and **`ds`/`es`/`ss` reload**, not before. A hang after **`STAGE 1: paging done`** but before **`STAGE 2: begin`** is in the **boot GDT** block (L617–L646); after **`STAGE 2: begin`**, look at **IDT / `int3` / ISR / `iretq`**.
+**Takeaway:** **`write_stage2_begin()`** is **after** **`lretq`** and **`ds`/`es`/`ss` reload**, not before. **Stage 3** (PIC/PIT/IRQ0) runs **after** **`write_stage2_done()`**; see [OS-6-irq-pic-study.md](OS-6-irq-pic-study.md) for the ordered list. A hang after **`STAGE 1: paging done`** but before **`STAGE 2: begin`** is in the **boot GDT** block (L617–L646); after **`STAGE 2: begin`**, look at **IDT / `int3` / ISR / `iretq`**.
 
 ## Step 1: the ISR stub saves GPRs, aligns stack, calls the dispatcher
 
@@ -479,4 +479,13 @@ You should see (in order):
 
 ## Next milestone hint
 
-After you trust exceptions, the next step is usually **IRQs** (PIC/APIC), **masking**, and **EOI**—but this milestone intentionally stays on a CPU **exception** path first because it doesn’t require interrupt controller setup.
+After you trust exceptions, the next step is **IRQs** (PIC/APIC), **masking**, and **EOI**. The full tutorial chapter for `src-os/` is **[OS-6-irq-pic-study.md](OS-6-irq-pic-study.md)** (PIC remap, PIT, vector 32, `sti`/`hlt`, EOI).
+
+**Skift reference (this repo):** [`src-os-skift/skift/`](src-os-skift/skift/) — quick map:
+
+| Topic | File |
+| --- | --- |
+| 8259 remap + `0x20` master EOI | [`src-os-skift/skift/src/kernel/hal-x86_64/pic.h`](src-os-skift/skift/src/kernel/hal-x86_64/pic.h) |
+| PIT tick setup | [`src-os-skift/skift/src/kernel/hal-x86_64/pit.h`](src-os-skift/skift/src/kernel/hal-x86_64/pit.h) |
+| 256 IDT stubs → C | [`src-os-skift/skift/src/kernel/hjert/x86_64/ints.s`](src-os-skift/skift/src/kernel/hjert/x86_64/ints.s) |
+| `init()` wires PIC+PIT; `_intDispatch` does `irq = intNo - 32` and `_pic.ack` | [`src-os-skift/skift/src/kernel/hjert/x86_64/arch.cpp`](src-os-skift/skift/src/kernel/hjert/x86_64/arch.cpp) |

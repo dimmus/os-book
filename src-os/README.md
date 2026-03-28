@@ -7,6 +7,7 @@ This is a standalone tutorial milestone:
 - calls `ExitBootServices`
 - jumps to the kernel entry
 - prints to COM1 (serial)
+- Stage 3: PIC + PIT + IRQ0 (see `OS-6-irq-pic-study.md` in the book tree)
 - runs under QEMU with OVMF
 
 ## Run
@@ -43,6 +44,14 @@ STAGE 2: install idt
 STAGE 2: int3
 STAGE 2: #BP dispatcher
 STAGE 2: done
+STAGE 3: begin
+STAGE 3: pic ok
+STAGE 3: pit ok
+STAGE 3: sti
+STAGE 3: irq 1
+STAGE 3: irq 2
+STAGE 3: irq 3
+STAGE 3: done
 ```
 
 ## How `uefi/kernel_blob.inc` is produced
@@ -51,7 +60,7 @@ The UEFI app embeds the kernel as a generated C array.
 
 Build pipeline:
 
-1. `kernel/Makefile` builds `build/kernel.elf` from `kernel/init.cpp`.
+1. `kernel/Makefile` builds `build/kernel.elf` from `kernel/init.cpp`, `idt_entry.S`, and `irq_entry.S`.
 2. `kernel/Makefile` converts ELF -> raw binary:
    - `llvm-objcopy -O binary build/kernel.elf build/kernel.raw`
    - `python3 kernel/pad_kernel_raw.py build/kernel.elf build/kernel.raw` pads to the first `PT_LOAD` `MemSiz` so `.bss` (e.g. the IDT array) is present in the blob (`llvm-objcopy` alone often stops at `FileSiz`).

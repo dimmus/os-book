@@ -4,6 +4,7 @@
 // - the "kernel" is loaded by our UEFI app into allocated pages
 // - Stage 1: minimal paging (CR3) + upper-half verification
 // - Stage 2: IDT + #BP via int3 (see OS-5-idt-study.md)
+// - Stage 3: PIC remap + PIT + IRQ0 (vector 32), EOI (see OS-6-irq-pic-study.md)
 //
 // We print directly to COM1 and then halt forever.
 
@@ -297,6 +298,186 @@ extern "C" void isr_breakpoint(void);
 
 extern "C" void breakpoint_dispatch(void) {
     write_stage2_dispatcher_bp();
+}
+
+// ----------------------------
+// Stage 3: PIC + PIT + timer IRQ (see OS-6-irq-pic-study.md)
+// ----------------------------
+
+volatile uint64_t g_timer_irq_count = 0;
+
+static inline void write_stage3_begin() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('3');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('b');
+    write_stage_char('e');
+    write_stage_char('g');
+    write_stage_char('i');
+    write_stage_char('n');
+    write_stage_char('\n');
+}
+
+static inline void write_stage3_pic_ok() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('3');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('p');
+    write_stage_char('i');
+    write_stage_char('c');
+    write_stage_char(' ');
+    write_stage_char('o');
+    write_stage_char('k');
+    write_stage_char('\n');
+}
+
+static inline void write_stage3_pit_ok() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('3');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('p');
+    write_stage_char('i');
+    write_stage_char('t');
+    write_stage_char(' ');
+    write_stage_char('o');
+    write_stage_char('k');
+    write_stage_char('\n');
+}
+
+static inline void write_stage3_sti() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('3');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('s');
+    write_stage_char('t');
+    write_stage_char('i');
+    write_stage_char('\n');
+}
+
+static inline void write_stage3_irq_tick(char digit) {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('3');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('i');
+    write_stage_char('r');
+    write_stage_char('q');
+    write_stage_char(' ');
+    write_stage_char(digit);
+    write_stage_char('\n');
+}
+
+static inline void write_stage3_done() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('3');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('d');
+    write_stage_char('o');
+    write_stage_char('n');
+    write_stage_char('e');
+    write_stage_char('\n');
+}
+
+static inline void outb(uint16_t port, uint8_t value) {
+    asm volatile("outb %0, %1" : : "a"(value), "Nd"(port) : "memory");
+}
+
+static inline void io_wait() {
+    asm volatile("jmp 1f\n1:\tjmp 1f\n1:" ::: "memory");
+}
+
+// Dual 8259 PIC: remap to vectors 0x20–0x2F / 0x28–0x2F, mask all IRQs except timer (IRQ0).
+static void pic_remap_and_mask() {
+    constexpr uint16_t PIC1_CMD = 0x20;
+    constexpr uint16_t PIC1_DATA = 0x21;
+    constexpr uint16_t PIC2_CMD = 0xA0;
+    constexpr uint16_t PIC2_DATA = 0xA1;
+
+    outb(PIC1_CMD, 0x11);
+    io_wait();
+    outb(PIC2_CMD, 0x11);
+    io_wait();
+    outb(PIC1_DATA, 0x20);
+    io_wait();
+    outb(PIC2_DATA, 0x28);
+    io_wait();
+    outb(PIC1_DATA, 4);
+    io_wait();
+    outb(PIC2_DATA, 2);
+    io_wait();
+    outb(PIC1_DATA, 1);
+    io_wait();
+    outb(PIC2_DATA, 1);
+    io_wait();
+    outb(PIC1_DATA, 0xFE);
+    outb(PIC2_DATA, 0xFF);
+}
+
+// Channel 0, square wave (~hz), for QEMU's emulated PIT.
+static void pit_set_frequency(unsigned hz) {
+    constexpr uint16_t PIT_CMD = 0x43;
+    constexpr uint16_t PIT_CH0 = 0x40;
+    constexpr uint32_t PIT_BASE_HZ = 1193182;
+
+    uint32_t divisor = PIT_BASE_HZ / hz;
+    if (divisor > 0xFFFFu) {
+        divisor = 0xFFFFu;
+    }
+    if (divisor < 2) {
+        divisor = 2;
+    }
+    outb(PIT_CMD, 0x36);
+    io_wait();
+    outb(PIT_CH0, static_cast<uint8_t>(divisor & 0xFF));
+    io_wait();
+    outb(PIT_CH0, static_cast<uint8_t>(divisor >> 8));
+    io_wait();
+}
+
+extern "C" void isr_irq32(void);
+
+extern "C" void timer_irq_dispatch(void) {
+    constexpr uint16_t PIC1_CMD = 0x20;
+    outb(PIC1_CMD, 0x20);
+    uint64_t n = ++g_timer_irq_count;
+    if (n <= 3) {
+        write_stage3_irq_tick(static_cast<char>('0' + static_cast<int>(n)));
+    }
 }
 
 static inline uint64_t pageAlignDown(uint64_t x, uint64_t pageSize) {
@@ -675,6 +856,28 @@ extern "C" void kernel_entry(
     write_stage2_int3_marker();
     asm volatile("int3" ::: "memory");
     write_stage2_done();
+
+    // Stage 3: external interrupt path (PIC + PIT → IRQ0 → vector 32).
+    write_stage3_begin();
+    pic_remap_and_mask();
+    write_stage3_pic_ok();
+    pit_set_frequency(100);
+    write_stage3_pit_ok();
+
+    constexpr uint8_t kVectorIRQ0 = 32;
+    constexpr uint8_t kIdtTypeInt64 = 0x8E;
+    uint64_t irqHandler = kLinear(reinterpret_cast<const void*>(&isr_irq32));
+    idtSetGate(idt, kVectorIRQ0, irqHandler, csSel, kIdtTypeInt64);
+    idtLoad(reinterpret_cast<uint64_t>(idt), static_cast<uint16_t>(sizeof(g_idt) - 1));
+
+    write_stage3_sti();
+    g_timer_irq_count = 0;
+    asm volatile("sti" ::: "memory");
+    while (g_timer_irq_count < 3) {
+        asm volatile("hlt" ::: "memory");
+    }
+    asm volatile("cli" ::: "memory");
+    write_stage3_done();
 
     for (;;) {
         asm volatile("cli; hlt");
