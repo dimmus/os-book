@@ -2,8 +2,9 @@
 //
 // Important for this milestone:
 // - the "kernel" is loaded by our UEFI app into allocated pages
-// - Stage 1: minimal paging (CR3) + upper-half verification (OS-4)
-// (Stage 2 IDT is OS-5.)
+// - Stage 1: minimal paging (CR3) + upper-half verification
+// - Stage 2: IDT + #BP via int3 (see OS-5-idt-study.md)
+//
 // We print directly to COM1 and then halt forever.
 
 #include "../common/serial.hpp"
@@ -131,6 +132,173 @@ static inline void write_stage1_touch_memory() {
     write_stage_char('\n');
 }
 
+// ----------------------------
+// Stage 2: IDT + breakpoint (Steps 2–6 of OS-5-idt-study.md)
+// ----------------------------
+
+struct IdtEntry {
+    uint16_t offset_lo;
+    uint16_t selector;
+    uint8_t ist;
+    uint8_t type_attr;
+    uint16_t offset_mid;
+    uint32_t offset_hi;
+    uint32_t reserved;
+} __attribute__((packed));
+
+// Storage for the IDT (linked at VMA 0; the UEFI loader places the image at
+// `kernelPhys`. Never dereference `g_idt` directly — use idtTable(kernelPhys).
+static IdtEntry g_idt[256] __attribute__((aligned(16)));
+
+static IdtEntry* idtTable(uint64_t kernelPhys) {
+    return reinterpret_cast<IdtEntry*>(
+        kernelPhys + reinterpret_cast<uintptr_t>(static_cast<void*>(&g_idt[0])));
+}
+
+static void idtClearAll(IdtEntry* t) {
+    for (unsigned i = 0; i < 256; ++i) {
+        t[i].offset_lo = 0;
+        t[i].offset_mid = 0;
+        t[i].offset_hi = 0;
+        t[i].selector = 0;
+        t[i].ist = 0;
+        t[i].type_attr = 0;
+        t[i].reserved = 0;
+    }
+}
+
+static void idtSetGate(IdtEntry* t, uint8_t vector, uint64_t handlerVirt, uint16_t cs, uint8_t typeAttr) {
+    IdtEntry* e = &t[vector];
+    e->offset_lo = static_cast<uint16_t>(handlerVirt & 0xffffu);
+    e->offset_mid = static_cast<uint16_t>((handlerVirt >> 16) & 0xffffu);
+    e->offset_hi = static_cast<uint32_t>(handlerVirt >> 32);
+    e->selector = cs;
+    e->ist = 0;
+    e->type_attr = typeAttr;
+    e->reserved = 0;
+}
+
+struct IdtPointer {
+    uint16_t limit;
+    uint64_t base;
+} __attribute__((packed));
+
+static void idtLoad(uint64_t baseVirt, uint16_t limit) {
+    IdtPointer p{};
+    p.limit = limit;
+    p.base = baseVirt;
+    asm volatile("lidt %0" : : "m"(p) : "memory");
+}
+
+static inline void write_stage2_begin() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('2');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('b');
+    write_stage_char('e');
+    write_stage_char('g');
+    write_stage_char('i');
+    write_stage_char('n');
+    write_stage_char('\n');
+}
+
+static inline void write_stage2_install_idt() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('2');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('i');
+    write_stage_char('n');
+    write_stage_char('s');
+    write_stage_char('t');
+    write_stage_char('a');
+    write_stage_char('l');
+    write_stage_char('l');
+    write_stage_char(' ');
+    write_stage_char('i');
+    write_stage_char('d');
+    write_stage_char('t');
+    write_stage_char('\n');
+}
+
+static inline void write_stage2_int3_marker() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('2');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('i');
+    write_stage_char('n');
+    write_stage_char('t');
+    write_stage_char('3');
+    write_stage_char('\n');
+}
+
+static inline void write_stage2_dispatcher_bp() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('2');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('#');
+    write_stage_char('B');
+    write_stage_char('P');
+    write_stage_char(' ');
+    write_stage_char('d');
+    write_stage_char('i');
+    write_stage_char('s');
+    write_stage_char('p');
+    write_stage_char('a');
+    write_stage_char('t');
+    write_stage_char('c');
+    write_stage_char('h');
+    write_stage_char('e');
+    write_stage_char('r');
+    write_stage_char('\n');
+}
+
+static inline void write_stage2_done() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('2');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('d');
+    write_stage_char('o');
+    write_stage_char('n');
+    write_stage_char('e');
+    write_stage_char('\n');
+}
+
+extern "C" void isr_breakpoint(void);
+
+extern "C" void breakpoint_dispatch(void) {
+    write_stage2_dispatcher_bp();
+}
+
 static inline uint64_t pageAlignDown(uint64_t x, uint64_t pageSize) {
     return x & ~(pageSize - 1);
 }
@@ -140,6 +308,8 @@ static inline uint64_t pageAlignUp(uint64_t x, uint64_t pageSize) {
 }
 
 // Must be the first bytes of the kernel image: UEFI jumps to `kernelPhys`
+// (offset 0 of the raw blob). Other functions must not precede this in
+// `.text` unless forced by the linker script.
 __attribute__((section(".text.kernel_entry")))
 extern "C" void kernel_entry(
     uint64_t mmapPhys,
@@ -438,6 +608,73 @@ extern "C" void kernel_entry(
     *testPtr = old;
 
     write_stage1_done();
+
+    // On #BP the CPU reloads CS from our IDT gate and reads the segment
+    // descriptor from whatever GDTR UEFI installed. That table often lives in
+    // physical pages we never mapped → #PF (CR2 in the firmware GDT) and #DF.
+    // Install a tiny GDT on the stack (already identity-mapped) and reload
+    // CS=0x08 via lretq instead of mapping firmware RAM.
+    alignas(16) uint64_t bootGdt[3] = {
+        0,
+        0x00AF9A000000FFFFull, // 64-bit ring-0 code (long mode)
+        0x00AF92000000FFFFull, // ring-0 data
+    };
+    struct BootGdtr {
+        uint16_t limit;
+        uint64_t base;
+    } __attribute__((packed)) bootGdtr = {
+        static_cast<uint16_t>(sizeof(bootGdt) - 1),
+        reinterpret_cast<uint64_t>(bootGdt),
+    };
+    uint64_t code64Sel = 8;
+    asm volatile(
+        "lgdt %[gdtr]\n\t"
+        "pushq %[sel]\n\t"
+        "leaq 1f(%%rip), %%rax\n\t"
+        "pushq %%rax\n\t"
+        "lretq\n\t"
+        "1:\n\t"
+        "movl $0x10, %%eax\n\t"
+        "movw %%ax, %%ds\n\t"
+        "movw %%ax, %%es\n\t"
+        "movw %%ax, %%ss\n\t"
+        :
+        : [gdtr] "m"(bootGdtr), [sel] "r"(code64Sel)
+        : "rax", "memory");
+
+    // First Stage 2 line: if this is missing but Stage 1 completed, the running
+    // image is almost certainly an old kernel.raw / stale BOOTX64.EFI embed.
+    write_stage2_begin();
+
+    // Stage 2: install IDT, trigger int3 (#BP), return via iretq from stub.
+    //
+    // The ELF is linked at VMA 0 but UEFI loads the raw blob at `kernelPhys`.
+    // Identity mapping uses linear addr == physical == kernelPhys + link_offset.
+    // IDTR, gate offsets, and any dereference of linked-at-0 globals must use
+    // kernelPhys + symbol offset — bare link addresses (e.g. 0x20c0 for g_idt)
+    // are not mapped.
+    auto kLinear = [kernelPhys](const void* p) -> uint64_t {
+        return kernelPhys + static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
+    };
+
+    IdtEntry* idt = idtTable(kernelPhys);
+
+    uint16_t csSel = 0;
+    asm volatile("mov %%cs, %0" : "=r"(csSel));
+
+    asm volatile("cli" ::: "memory");
+
+    idtClearAll(idt);
+    constexpr uint8_t kVectorBreakpoint = 3;
+    constexpr uint8_t kIdtTypeTrap64 = 0x8F;
+    uint64_t bpHandler = kLinear(reinterpret_cast<const void*>(&isr_breakpoint));
+    idtSetGate(idt, kVectorBreakpoint, bpHandler, csSel, kIdtTypeTrap64);
+    idtLoad(reinterpret_cast<uint64_t>(idt), static_cast<uint16_t>(sizeof(g_idt) - 1));
+
+    write_stage2_install_idt();
+    write_stage2_int3_marker();
+    asm volatile("int3" ::: "memory");
+    write_stage2_done();
 
     for (;;) {
         asm volatile("cli; hlt");

@@ -17,10 +17,15 @@ KERNEL_BLOB_INC := kernel_blob.inc
 
 .PHONY: build image clean
 
-build:
-	@if [ -z "$(UEFI_LD)" ]; then echo "No UEFI linker found (tried: lld-link, ld.lld). Install lld."; exit 1; fi
-	@mkdir -p "$(BUILD_DIR)"
+# Regenerate the include whenever the raw kernel changes, and force a UEFI
+# recompile: `efi_main.obj` must be newer than `kernel_blob.inc` or the
+# embedded blob can stay stale (common reason for missing Stage 2 output).
+$(KERNEL_BLOB_INC): gen_kernel_blob.py $(KERNEL_RAW)
+	@if [ ! -f "$(KERNEL_RAW)" ]; then echo "Missing $(KERNEL_RAW); run kernel build first."; exit 1; fi
 	@python3 gen_kernel_blob.py "$(KERNEL_RAW)" "$(KERNEL_BLOB_INC)"
+
+$(EFI_OBJ): $(EFI_SRC) $(KERNEL_BLOB_INC)
+	@mkdir -p "$(BUILD_DIR)"
 	$(CXX) \
 		--target=x86_64-windows-gnu \
 		-ffreestanding \
@@ -28,6 +33,9 @@ build:
 		-std=c++20 \
 		-nostdlib \
 		-c "$(EFI_SRC)" -o "$(EFI_OBJ)"
+
+$(EFI_OUT): $(EFI_OBJ)
+	@if [ -z "$(UEFI_LD)" ]; then echo "No UEFI linker found (tried: lld-link, ld.lld). Install lld."; exit 1; fi
 	@mkdir -p "$$(dirname "$(EFI_OUT)")"
 	@if [ "$$(basename "$(UEFI_LD)")" = "ld.lld" ]; then \
 		"$(UEFI_LD)" -flavor link \
@@ -46,6 +54,8 @@ build:
 			/out:"$(EFI_OUT)" \
 			"$(EFI_OBJ)"; \
 	fi
+
+build: $(EFI_OUT)
 
 image:
 	@mkdir -p "$$(dirname "$(FAT_IMG)")"
