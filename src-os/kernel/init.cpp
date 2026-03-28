@@ -5,12 +5,16 @@
 // - Stage 1: minimal paging (CR3) + upper-half verification
 // - Stage 2: IDT + #BP via int3 (see OS-5-idt-study.md)
 // - Stage 3: PIC remap + PIT + IRQ0 (vector 32), EOI (see OS-6-irq-pic-study.md)
+// - Stage 4: mask PIC, LAPIC MMIO timer (vector 34), LAPIC EOI (see OS-7-lapic-study.md)
 //
 // We print directly to COM1 and then halt forever.
 
 #include "../common/serial.hpp"
 
 #include <stdint.h>
+
+// Default local APIC MMIO page (Intel SDM / QEMU PC). Mapped in Stage 1.
+static constexpr uint64_t kLapicMmioPhys = 0xFEE00000ull;
 
 static inline void write_hello_init() {
     // Print without using a NUL-terminated string in .rodata.
@@ -448,6 +452,13 @@ static void pic_remap_and_mask() {
     outb(PIC2_DATA, 0xFF);
 }
 
+static void pic_mask_all() {
+    constexpr uint16_t PIC1_DATA = 0x21;
+    constexpr uint16_t PIC2_DATA = 0xA1;
+    outb(PIC1_DATA, 0xFF);
+    outb(PIC2_DATA, 0xFF);
+}
+
 // Channel 0, square wave (~hz), for QEMU's emulated PIT.
 static void pit_set_frequency(unsigned hz) {
     constexpr uint16_t PIT_CMD = 0x43;
@@ -477,6 +488,185 @@ extern "C" void timer_irq_dispatch(void) {
     uint64_t n = ++g_timer_irq_count;
     if (n <= 3) {
         write_stage3_irq_tick(static_cast<char>('0' + static_cast<int>(n)));
+    }
+}
+
+// ----------------------------
+// Stage 4: Local APIC timer (see OS-7-lapic-study.md)
+// ----------------------------
+
+volatile uint64_t g_lapic_irq_count = 0;
+
+static inline void lapic_mmio_write(uintptr_t reg, uint32_t value) {
+    *reinterpret_cast<volatile uint32_t*>(kLapicMmioPhys + reg) = value;
+}
+
+static inline uint32_t lapic_mmio_read(uintptr_t reg) {
+    return *reinterpret_cast<volatile uint32_t*>(kLapicMmioPhys + reg);
+}
+
+static inline void write_stage4_begin() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('b');
+    write_stage_char('e');
+    write_stage_char('g');
+    write_stage_char('i');
+    write_stage_char('n');
+    write_stage_char('\n');
+}
+
+static inline void write_stage4_pic_masked() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('p');
+    write_stage_char('i');
+    write_stage_char('c');
+    write_stage_char(' ');
+    write_stage_char('m');
+    write_stage_char('a');
+    write_stage_char('s');
+    write_stage_char('k');
+    write_stage_char('\n');
+}
+
+static inline void write_stage4_lapic_mmio() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('l');
+    write_stage_char('a');
+    write_stage_char('p');
+    write_stage_char('i');
+    write_stage_char('c');
+    write_stage_char(' ');
+    write_stage_char('m');
+    write_stage_char('m');
+    write_stage_char('i');
+    write_stage_char('o');
+    write_stage_char('\n');
+}
+
+static inline void write_stage4_svr() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('s');
+    write_stage_char('v');
+    write_stage_char('r');
+    write_stage_char('\n');
+}
+
+static inline void write_stage4_timer_arm() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('t');
+    write_stage_char('i');
+    write_stage_char('m');
+    write_stage_char('e');
+    write_stage_char('r');
+    write_stage_char('\n');
+}
+
+static inline void write_stage4_sti() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('s');
+    write_stage_char('t');
+    write_stage_char('i');
+    write_stage_char('\n');
+}
+
+static inline void write_stage4_irq_tick(char digit) {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('i');
+    write_stage_char('r');
+    write_stage_char('q');
+    write_stage_char(' ');
+    write_stage_char(digit);
+    write_stage_char('\n');
+}
+
+static inline void write_stage4_done() {
+    write_stage_char('S');
+    write_stage_char('T');
+    write_stage_char('A');
+    write_stage_char('G');
+    write_stage_char('E');
+    write_stage_char(' ');
+    write_stage_char('4');
+    write_stage_char(':');
+    write_stage_char(' ');
+    write_stage_char('d');
+    write_stage_char('o');
+    write_stage_char('n');
+    write_stage_char('e');
+    write_stage_char('\n');
+}
+
+// LAPIC register offsets (MMIO, 32-bit aligned accesses).
+static constexpr uintptr_t kLapicRegSvr = 0xF0;
+static constexpr uintptr_t kLapicRegEoi = 0xB0;
+static constexpr uintptr_t kLapicRegVer = 0x30;
+static constexpr uintptr_t kLapicRegLvtTimer = 0x320;
+static constexpr uintptr_t kLapicRegTimerInit = 0x380;
+static constexpr uintptr_t kLapicRegTimerDiv = 0x3E0;
+
+extern "C" void isr_lapic_timer(void);
+
+extern "C" void lapic_timer_dispatch(void) {
+    lapic_mmio_write(kLapicRegEoi, 0);
+    uint64_t n = ++g_lapic_irq_count;
+    if (n <= 3) {
+        write_stage4_irq_tick(static_cast<char>('0' + static_cast<int>(n)));
     }
 }
 
@@ -760,6 +950,8 @@ extern "C" void kernel_entry(
     mapRangeDual(stackPhys, stackPhys, stackSizeBytes);
     // Map only the first page of the mmap buffer for the verification touch.
     mapRangeDual(mmapTouchPhys, mmapTouchPhys, mmapTouchSize);
+    // Local APIC MMIO (not described as conventional RAM in the UEFI map).
+    mapPageDual(kLapicMmioPhys, kLapicMmioPhys, PTE_WRITABLE);
 
     // Upper-half alias mappings: v = p + UPPER_HALF.
     auto mapUpperHalfAliases = [&]() {
@@ -772,6 +964,7 @@ extern "C" void kernel_entry(
             mapPageDual(stackPhys + UPPER_HALF + off, stackPhys + off, PTE_WRITABLE);
         for (uint64_t off = 0; off < mPagesBytes; off += PAGE_SIZE)
             mapPageDual(mmapTouchPhys + UPPER_HALF + off, mmapTouchPhys + off, PTE_WRITABLE);
+        mapPageDual(kLapicMmioPhys + UPPER_HALF, kLapicMmioPhys, PTE_WRITABLE);
     };
 
     mapUpperHalfAliases();
@@ -878,6 +1071,45 @@ extern "C" void kernel_entry(
     }
     asm volatile("cli" ::: "memory");
     write_stage3_done();
+
+    // Stage 4: Local APIC periodic timer; PIC fully masked (no PIT delivery).
+    write_stage4_begin();
+    pic_mask_all();
+    write_stage4_pic_masked();
+
+    (void)lapic_mmio_read(kLapicRegVer);
+    write_stage4_lapic_mmio();
+
+    lapic_mmio_write(kLapicRegSvr, 0x1FF);
+    write_stage4_svr();
+
+    constexpr uint32_t kLapicTimerDivide16 = 3;
+    lapic_mmio_write(kLapicRegTimerDiv, kLapicTimerDivide16);
+
+    constexpr uint8_t kVectorLapicTimer = 34;
+    constexpr uint32_t kLvtTimerPeriodic = 1u << 17;
+    lapic_mmio_write(kLapicRegLvtTimer, static_cast<uint32_t>(kVectorLapicTimer) | kLvtTimerPeriodic);
+
+    constexpr uint32_t kLapicInitCount = 0x80000;
+    lapic_mmio_write(kLapicRegTimerInit, kLapicInitCount);
+    write_stage4_timer_arm();
+
+    uint64_t lapicHandler = kLinear(reinterpret_cast<const void*>(&isr_lapic_timer));
+    idtSetGate(idt, kVectorLapicTimer, lapicHandler, csSel, kIdtTypeInt64);
+    idtLoad(reinterpret_cast<uint64_t>(idt), static_cast<uint16_t>(sizeof(g_idt) - 1));
+
+    write_stage4_sti();
+    g_lapic_irq_count = 0;
+    asm volatile("sti" ::: "memory");
+    while (g_lapic_irq_count < 3) {
+        asm volatile("hlt" ::: "memory");
+    }
+    asm volatile("cli" ::: "memory");
+
+    constexpr uint32_t kLvtMasked = 1u << 16;
+    lapic_mmio_write(kLapicRegLvtTimer, kLvtMasked);
+
+    write_stage4_done();
 
     for (;;) {
         asm volatile("cli; hlt");

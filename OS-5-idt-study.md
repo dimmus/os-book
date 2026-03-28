@@ -4,7 +4,7 @@ This page walks through **milestone 2** after Stage 1 paging: install a **minima
 
 We keep the same overall boot story:
 
-`UEFI -> ExitBootServices -> kernel_entry -> HELLO INIT -> Stage 1 paging markers -> boot GDT + lretq -> Stage 2 serial markers -> lidt -> int3 -> #BP -> done -> Stage 3 PIC/PIT/IRQ0 -> done` (Stage 3: [OS-6-irq-pic-study.md](OS-6-irq-pic-study.md))
+`UEFI -> ExitBootServices -> kernel_entry -> HELLO INIT -> Stage 1 paging markers -> boot GDT + lretq -> Stage 2 serial markers -> lidt -> int3 -> #BP -> done -> Stage 3 PIC/PIT/IRQ0 -> done -> Stage 4 LAPIC timer -> done` (Stage 3: [OS-6-irq-pic-study.md](OS-6-irq-pic-study.md), Stage 4: [OS-7-lapic-study.md](OS-7-lapic-study.md))
 
 ## What we had before (after Stage 1)
 

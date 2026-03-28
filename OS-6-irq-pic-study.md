@@ -270,4 +270,4 @@ After the OS-5 lines, you should see (in order):
 
 ## Next milestone hint
 
-When you outgrow the legacy PIC, move to **Local APIC + I/O APIC** (and **MSI** on PCI later). The tutorial pieces that carry over are: **IDT gates**, **clear EOI policy**, and **disciplined `kLinear`/`idtTable` addressing** for anything the CPU dereferences.
+When you outgrow the legacy PIC for the timer, use the **Local APIC** MMIO page and **LAPIC EOI**. The `src-os/` walkthrough is **[OS-7-lapic-study.md](OS-7-lapic-study.md)**. Later add **I/O APIC** and **MSI/MSI-X** for PCI; the pieces that carry over are **IDT gates**, **correct EOI for the controller that delivered the IRQ**, and **mapping every MMIO page you touch under your `CR3`**.
