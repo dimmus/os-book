@@ -1,0 +1,11 @@
+# Tutorial OS build products (src-os)
+src-os/build/
+src-os/uefi/kernel_blob.inc
+src-os/uefi/__pycache__/
+*.pyc
+
+# Local / editor
+*.swp
+*~
+TODO
+src-os-skift
