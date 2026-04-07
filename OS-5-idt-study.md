@@ -68,6 +68,63 @@ Files (under `src-os/kernel/` unless noted):
 - `pad_kernel_raw.py` + `Makefile` — pad `kernel.raw` to the ELF segment **`MemSiz`** so `.bss` (including `g_idt`) is present in the UEFI-loaded blob (`llvm-objcopy` alone often truncates at `FileSiz`).
 - `Makefile` — builds `kernel_init.o` + `idt_entry.o` → `kernel.elf` → `kernel.raw`.
 
+## Changed and new files
+
+| Change | Path |
+| --- | --- |
+| **New** | [`src-os/kernel/idt_entry.S`](src-os/kernel/idt_entry.S) — `isr_breakpoint` |
+| **Changed** | [`src-os/kernel/init.cpp`](src-os/kernel/init.cpp) — boot GDT, `idtTable`, `lidt`, Stage 2 serial, `breakpoint_dispatch` |
+| **Changed** | [`src-os/kernel/Makefile`](src-os/kernel/Makefile) — link `idt_entry.o` |
+| **Changed** | [`src-os/kernel/ld.ld`](src-os/kernel/ld.ld) — single `PT_LOAD` segment |
+| **Changed** | [`src-os/kernel/pad_kernel_raw.py`](src-os/kernel/pad_kernel_raw.py) — pad `kernel.raw` to `MemSiz` (`.bss` / `g_idt`) |
+
+## Memory and CPU state snapshot (Stage 2)
+
+**Depends on:** [OS-4](OS-4-paging-study.md) — **`CR3`** and mapped regions (GDT/IDT storage must live in **mapped** RAM).
+
+**What Stage 2 builds in RAM:**
+
+| Structure | Purpose |
+| --- | --- |
+| **`bootGdt[3]`** + **`bootGdtr`** | Minimal **code 0x08** / **data 0x10** descriptors (in stack-backed or mapped memory) |
+| **`g_idt[256]`** | Gate descriptors; **`idtTable(kernelPhys)`** gives the **loaded** linear pointer |
+| Handler stubs | e.g. **`isr_breakpoint`** code bytes linked into the kernel image |
+
+**CPU registers — load order:**
+
+```text
+lgdt ──► GDTR points to bootGdt
+lretq ──► CS ← 0x08 (reload 64-bit code selector)
+movw to ds, es, ss ──► 0x10
+mov %%cs, csSel; idtSetGate(..., kLinear(&isr_breakpoint), 0x8F); lidt ──► IDTR
+```
+
+**Exception path (#BP, vector 3) — stack frame (no privilege change, no error code):**
+
+```text
+  RSP grows down →   +0    saved RIP
+                     +8    CS
+                     +16   RFLAGS
+                     +24   RSP (at fault)
+                     +32   SS   ← patched to 0x10 before iretq (UEFI SS out of new GDT limit)
+```
+
+Stub pushes **RAX..R15** below that frame, then `call breakpoint_dispatch`, then pops, **`movw $0x10, 32(%rsp)`**, **`iretq`**.
+
+**Relations / paths:**
+
+```text
+CPU exception #BP ──► IDT[3] ──► RIP from gate (kLinear handler) ──► isr_breakpoint
+                                                      │
+                                                      ▼
+                                            C++ breakpoint_dispatch (serial)
+                                                      │
+                                                      ▼
+                                            iretq ──► return after int3
+```
+
+**Key idea:** **`kLinear(sym)`** = **`kernelPhys + offset(sym)`** so the IDT never stores link-time VMA **0** addresses that are unmapped.
+
 ## Step 0: add an assembly object file to the kernel link
 
 We need raw assembly because the exception entry path must end with **`iretq`**, and you must preserve the exception frame that the CPU pushed.

@@ -6,6 +6,60 @@ We keep the same boot boundary from phase 0:
 
 `UEFI -> ExitBootServices -> kernel_entry -> serial log`
 
+## Changed and new files
+
+Stage 1 paging touches the UEFI handover, the kernel’s page-table builder, and the link layout. Paths use [`src-os/`](src-os/) in this repo.
+
+| Role | Path |
+| --- | --- |
+| Pass `mmapPhys`, `descSize`, `kernelPhys`, `kernelPages`, `stackPhys` into `kernel_entry` | [`src-os/uefi/efi_main.cpp`](src-os/uefi/efi_main.cpp) |
+| Paging: `allocPage`, `mapPageDual`, `CR3`, Stage 1 serial markers | [`src-os/kernel/init.cpp`](src-os/kernel/init.cpp) |
+| Link script (single load segment for `objcopy`) | [`src-os/kernel/ld.ld`](src-os/kernel/ld.ld) |
+| Kernel build | [`src-os/kernel/Makefile`](src-os/kernel/Makefile) |
+
+## Memory and CPU state snapshot (Stage 1)
+
+**What you get from earlier milestones:**
+
+| Input | Meaning |
+| --- | --- |
+| **`kernelPhys` / `kernelPages`** | Where the **loaded** kernel blob lives (still identity-mapped) |
+| **`stackPhys`** | Kernel stack pages |
+| **`mmapPhys` + sizes** | UEFI memory-map buffer to **touch** after paging proves mappings |
+| Firmware **`CR3`** | Previous paging root — **replaced** when you load yours |
+
+**What Stage 1 builds in RAM:**
+
+```text
+  phys pages allocated by kernel for tables ──►  PML4 ──► PDPT ──► PD ──► PT
+                                                      │
+                                                      └── leaf PTEs: 4 KiB frames
+```
+
+- **Dual-map** the same frames at **`virt = phys`** and **`virt = phys + UPPER_HALF`** (tutorial constant) so you can test the upper alias.
+- Map at least: **kernel text/data**, **stack**, **mmap buffer** (and in later trees **LAPIC MMIO** — see [OS-7](OS-7-lapic-study.md)).
+
+**CPU registers — activation path:**
+
+```
+CR3  ← physical address of PML4 (root of walk)
+     every linear address → MMU walk PML4[47:39] → PDPT[38:30] → PD[29:21] → PT[20:12] → offset[11:0]
+```
+
+**After `mov cr3` / write to CR3:** TLB is tied to new mappings; **`invlpg`** only if you need to shoot down one VA later.
+
+**Relations / paths:**
+
+```text
+allocPage() ──► free frames from mmap-described RAM
+     │
+mapPageDual(va_lo, va_hi, phys, flags) ──► fills PTEs
+     │
+asm: mov %0, %%cr3  (load root into CR3)  ──►  STAGE 1: touch via upper-half pointer to mmap buffer
+```
+
+**Not yet:** **IDT**/`lidt` ([OS-5](OS-5-idt-study.md)), **user** segments, **#PF** handler ([OS-8](OS-8-page-fault-study.md)) — faults still “mystery halt” or firmware behavior until IDT is yours.
+
 ## What we had before (phase 0)
 
 In `os/`, the UEFI app:

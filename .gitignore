@@ -4,6 +4,9 @@ src-os/uefi/kernel_blob.inc
 src-os/uefi/__pycache__/
 *.pyc
 
+# Book build output (see build-os-book.sh)
+dist/
+
 # Local / editor
 *.swp
 *~

@@ -49,6 +49,50 @@ Files (under `src-os/kernel/` unless noted):
 - `init.cpp` — `outb` / `io_wait`, `pic_remap_and_mask`, `pit_set_frequency`, Stage 3 serial markers, `idtSetGate(..., 32, ..., 0x8E)`, second `lidt`, `sti` / `hlt` wait, `timer_irq_dispatch` + **EOI**.
 - `Makefile` — links `irq_entry.o` with `kernel_init.o` and `idt_entry.o`.
 
+## Changed and new files
+
+| Change | Path |
+| --- | --- |
+| **New** | [`src-os/kernel/irq_entry.S`](src-os/kernel/irq_entry.S) — `isr_irq32` |
+| **Changed** | [`src-os/kernel/init.cpp`](src-os/kernel/init.cpp) — PIC/PIT, IDT gate 32, `timer_irq_dispatch`, Stage 3 serial |
+| **Changed** | [`src-os/kernel/Makefile`](src-os/kernel/Makefile) — link `irq_entry.o` |
+
+## Memory and CPU state snapshot (Stage 3)
+
+**Depends on:** [OS-5](OS-5-idt-study.md) — **GDT**, **IDT**, **`kLinear`**, **`iretq`** + saved **`SS`** patch.
+
+**What Stage 3 configures (outside CR3 page tables):**
+
+| Mechanism | Where | Effect |
+| --- | --- | --- |
+| **8259 PIC** | I/O ports `0x20`/`0x21`, `0xA0`/`0xA1` | Remap IRQ0..15 → vectors **32–47**; **IMR** masks lines |
+| **PIT ch0** | `0x43` + `0x40` | Periodic timer → **IRQ0** on master PIC |
+| **IDT[32]** | Gate → **`kLinear(&isr_irq32)`**, type **`0x8E`** | Hardware IRQ path clears **`IF`** for handler duration |
+
+**CPU / interrupt path:**
+
+```text
+PIT pulse ──► PIC (IRQ0 unmasked) ──► CPU: vector 32 ──► IDT[32] ──► isr_irq32
+                                                              │
+                                                              ▼
+                                                    timer_irq_dispatch (serial)
+                                                              │
+                                                              ▼
+                                                    EOI: outb(0x20, 0x20)  ← ack 8259 master
+                                                              │
+                                                              ▼
+                                                         iretq
+```
+
+**Stack:** same **5 quadwords** as OS-5 (#BP) for **same-privilege** IRQ (no error code on stack for external interrupt in this setup).
+
+**Registers of note:**
+
+- **`RFLAGS.IF`**: must be **1** (`sti`) or the CPU ignores IRQ delivery (maskable interrupts).
+- **PIC IMR**: even with **`IF=1`**, masked lines do not assert; tutorial uses **`0xFE`** master (only IRQ0).
+
+**Not yet:** **LAPIC MMIO** + **LAPIC EOI** — those replace PIC/PIT for ticks in [OS-7](OS-7-lapic-study.md).
+
 Skift parallels (same repo tree as [OS-5](OS-5-idt-study.md) “Next milestone” table):
 
 | Our tutorial | Skift |

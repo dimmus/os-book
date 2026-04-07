@@ -1,0 +1,288 @@
+/* os_book — HTML/PDF export (pandoc --css) */
+
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --border: #c8c8c8;
+  --border-strong: #6b6b6b;
+  --text: #1a1a1a;
+  --muted: #4a4a4a;
+  --code-bg: #f0f2f5;
+  --code-border: #d0d4dc;
+  --accent: #0d47a1;
+  --table-stripe: #f5f6f8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121418;
+    --surface: #1a1d24;
+    --border: #3d4450;
+    --border-strong: #8a93a3;
+    --text: #e8eaed;
+    --muted: #b8bec9;
+    --code-bg: #0d1117;
+    --code-border: #30363d;
+    --accent: #90caf9;
+    --table-stripe: #22262e;
+  }
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  font-family: "Source Serif 4", "Georgia", "Times New Roman", serif;
+  line-height: 1.58;
+  color: var(--text);
+  background: var(--bg);
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  hyphens: auto;
+}
+
+/* Pandoc title block */
+header#title-block-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+h1 {
+  font-size: 1.85rem;
+  font-weight: 700;
+  margin: 2rem 0 0.75rem;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+h2 {
+  font-size: 1.35rem;
+  font-weight: 650;
+  margin: 1.75rem 0 0.6rem;
+  padding-top: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+h3 {
+  font-size: 1.12rem;
+  font-weight: 600;
+  margin: 1.35rem 0 0.5rem;
+  color: var(--text);
+}
+
+h4 {
+  font-size: 1.02rem;
+  font-weight: 600;
+  margin: 1.1rem 0 0.4rem;
+}
+
+p {
+  margin: 0.65rem 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* ---------- Tables ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+  font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+thead th {
+  background: var(--table-stripe);
+  font-weight: 600;
+  text-align: left;
+  border-bottom: 2px solid var(--border-strong);
+}
+
+th,
+td {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) {
+  background: var(--table-stripe);
+}
+
+tbody tr:hover {
+  filter: brightness(0.97);
+}
+
+@media (prefers-color-scheme: dark) {
+  tbody tr:hover {
+    filter: brightness(1.08);
+  }
+}
+
+/* Wide tables: scroll on small screens / PDF engines that support it */
+.table-wrap {
+  overflow-x: auto;
+  margin: 1rem 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Pandoc wraps tables in nothing special — target direct children */
+body > table,
+section table {
+  display: table;
+}
+
+/* ---------- Code blocks & inline code ---------- */
+
+code {
+  font-family: "JetBrains Mono", "SF Mono", "Consolas", "Liberation Mono", monospace;
+  font-size: 0.88em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: 0.12em 0.35em;
+  white-space: break-spaces;
+  word-break: break-word;
+}
+
+pre {
+  font-family: "JetBrains Mono", "SF Mono", "Consolas", "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  max-width: 100%;
+  tab-size: 4;
+}
+
+pre code {
+  font-size: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  white-space: pre;
+  display: block;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+/* Skylighting / Pygments-style spans inside pre */
+pre.sourceCode {
+  padding: 0.85rem 1rem;
+}
+
+pre.sourceCode code {
+  padding: 0;
+}
+
+/* Source blocks with language class */
+div.sourceCode {
+  margin: 1rem 0;
+}
+
+/* Plain-text fenced blocks (```text etc.) */
+pre.text,
+pre.text code {
+  color: var(--text);
+}
+
+/* ---------- Blockquotes, lists, hr ---------- */
+
+blockquote {
+  margin: 1rem 0;
+  padding: 0.4rem 0 0.4rem 1rem;
+  border-left: 4px solid var(--border-strong);
+  color: var(--muted);
+  font-style: italic;
+}
+
+ul,
+ol {
+  margin: 0.6rem 0 0.6rem 1.25rem;
+  padding-left: 0.25rem;
+}
+
+li {
+  margin: 0.2rem 0;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+
+/* ---------- Print / PDF ---------- */
+
+@page {
+  margin: 1.5cm 1.25cm;
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+    max-width: none;
+    font-size: 10.5pt;
+    padding: 0;
+  }
+
+  a {
+    color: #000;
+    text-decoration: underline;
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.75em;
+    color: #444;
+    word-break: break-all;
+  }
+
+  h1,
+  h2,
+  h3 {
+    page-break-after: avoid;
+  }
+
+  table,
+  pre,
+  figure {
+    page-break-inside: avoid;
+  }
+
+  pre {
+    border: 1px solid #999;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+}

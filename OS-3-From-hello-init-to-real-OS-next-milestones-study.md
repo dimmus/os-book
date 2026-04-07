@@ -8,6 +8,10 @@ Milestone 16 turns “hello-init” into a foundation for a real kernel by expan
 
 The milestone list below mirrors Skift-like components, but you implement them from scratch for the tutorial.
 
+## Changed and new files
+
+This chapter is a **roadmap** only: it does not introduce a separate tree by itself. Concrete **new and changed files** for each milestone live in the later study pages—especially [`OS-4-paging-study.md`](OS-4-paging-study.md) through [`OS-8-page-fault-study.md`](OS-8-page-fault-study.md)—and in [`src-os/`](src-os/).
+
 ## Step 0: How to use the progression (the “contract boundary” habit)
 
 Each milestone should end with:
@@ -18,6 +22,47 @@ Each milestone should end with:
 Concrete QEMU test principle:
 - After each subsystem is introduced, print `STAGE X: done` over serial.
 - If QEMU halts unexpectedly, the last printed marker tells you which boundary failed.
+
+## Roadmap: how each milestone extends memory and CPU state
+
+This file does not add a new kernel stage; it names the **sequence** implemented in [OS-4](OS-4-paging-study.md)–[OS-8](OS-8-page-fault-study.md). Use this diagram as an index of **what gets defined where**.
+
+```text
+                    ┌─────────────────────────────────────────────────────────┐
+  RAM               │  UEFI: kernel blob, stack, mmap buffer (phys pages)      │
+  (always)          └──────────────────────────┬────────────────────────────┘
+                                               │
+     OS-4  Stage 1  │  BUILD: PML4→PDPT→PD→PT  pages in RAM
+                     │  FILL:   identity + UPPER_HALF aliases for kernel,
+                     │          stack, mmap, (later LAPIC page in OS-7 tree)
+                     │  CPU:    CR3 ← phys(PML4)   [every access now via YOUR tables]
+                     ▼
+     OS-5  Stage 2  │  BUILD: boot GDT[3] in mapped RAM, GDTR; g_idt[256], IDTR
+                     │  CPU:    lgdt → lretq → CS=0x08, DS/ES/SS=0x10; lidt
+                     │  PATH:   int3 → IDT[3] → isr → dispatcher → iretq
+                     ▼
+     OS-6  Stage 3  │  BUILD: PIC remap+mask, PIT rate; IDT[32] → irq stub
+                     │  I/O:     outb PIC/PIT ports (not MMIO)
+                     │  PATH:   IRQ0 → vector 32 → EOI(out 0x20) → iretq; IF via sti
+                     ▼
+     OS-7  Stage 4  │  NEED:    LAPIC page mapped @ 0xFEE00000 (CR3 already)
+                     │  BUILD:   mask PIC; SVR enable; LVT timer → vector 34
+                     │  PATH:   LAPIC tick → IDT[34] → LAPIC EOI(MMIO 0xB0) → iretq
+                     ▼
+     OS-8  Stage 5  │  BUILD:   IDT[14] → pf_entry.S
+                     │  CPU:     #PF pushes ERROR + 5 qw; CR2 ← faulting linear
+                     │  PATH:    dispatch adjusts saved RIP; drop error code; iretq
+```
+
+**Register “ownership” summary:**
+
+| Milestone | New or critical CPU state |
+| --- | --- |
+| OS-4 | **`CR3`**, **`CR0.PG`** (paging on with your tables) |
+| OS-5 | **`GDTR`**, **`IDTR`**, **`CS`/`SS`** selectors from **your** GDT |
+| OS-6 | **`RFLAGS.IF`** (sti/cli), PIC **IMR** via I/O ports |
+| OS-7 | LAPIC **MMIO** at mapped **`0xFEE00000`**, **SVR**, **LVT**, **EOI** register |
+| OS-8 | **`CR2`** on #PF, **IDT[14]**, exception frame **+ error code** |
 
 ## Step 1: Paging / VMM (make the memory model real)
 

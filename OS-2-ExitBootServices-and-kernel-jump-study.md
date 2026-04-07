@@ -20,6 +20,58 @@ In this tutorial milestone, the handoff is implemented by:
 - UEFI app: `[os/uefi/efi_main.cpp](/run/media/dimmus/dev1/os/0_brutal_skift/os_book/os/uefi/efi_main.cpp)`
 - Kernel entry: `[os/kernel/init.cpp](/run/media/dimmus/dev1/os/0_brutal_skift/os_book/os/kernel/init.cpp)`
 
+## Changed and new files
+
+This milestone extends the UEFI app and kernel contract; paths use [`src-os/`](src-os/) in this repo.
+
+| Role | Path |
+| --- | --- |
+| `GetMemoryMap`, mmap buffer alloc, `ExitBootServices`, kernel jump asm | [`src-os/uefi/efi_main.cpp`](src-os/uefi/efi_main.cpp) |
+| Kernel entry (receives handover args when you add them in OS-4) | [`src-os/kernel/init.cpp`](src-os/kernel/init.cpp) |
+| Build | [`src-os/Makefile`](src-os/Makefile), [`src-os/uefi/Makefile`](src-os/uefi/Makefile), [`src-os/kernel/Makefile`](src-os/kernel/Makefile) |
+
+## Memory and CPU state snapshot (this milestone)
+
+**Focus:** the **UEFI memory-map contract** (`mapKey` ↔ filled descriptors) and a clean **CPU handoff** to the kernel. Same RAM layout as [OS-1](OS-1-HelloInit-UEFI-boot-and-serial-study.md); this chapter stresses **ordering** (size call → alloc buffer → fill call → avoid allocations that invalidate `mapKey` → `ExitBootServices`).
+
+**What you get:**
+
+| Artifact | Role |
+| --- | --- |
+| **`mmapSize`** | Required byte size for the descriptor array (from first `GetMemoryMap`) |
+| **`mmapPhys`** | Pages allocated for **raw descriptor bytes** |
+| **`mapKey`** | Must match the **filled** map at `ExitBootServices` |
+
+**What you build:**
+
+- A **second** `GetMemoryMap` that writes descriptors into **`mmapPhys`**.
+- Successful **`exitBootServices(imageHandle, mapKey)`** — after this, **only** register/stack state + RAM contents matter.
+
+**CPU registers at kernel jump (unchanged contract vs OS-1):**
+
+```
+RSP  ← stackTop
+RDI..R9  ← same six handover arguments (mmap, kernel, stack phys)
+IDTR/GDTR  ← firmware tables (replaced later: GDT OS-5, IDT OS-5, CR3 OS-4)
+```
+
+**Relations / paths:**
+
+```text
+GetMemoryMap(size) ──► know mmapSize
+      │
+      ▼
+allocatePages(mmap buffer @ mmapPhys)
+      │
+      ▼
+GetMemoryMap(fill @ mmapPhys) ──► mapKey matches THIS snapshot
+      │
+      ▼
+ExitBootServices(mapKey) ──► [BS off] ──► set RSP + RDI..R9 ──► kernel_entry
+```
+
+**Not yet:** own page tables (**`CR3`**), own **IDT** (**`lidt`**), **APIC** — see [OS-3](OS-3-From-hello-init-to-real-OS-next-milestones-study.md) onward.
+
 ## Step 1: First `GetMemoryMap` (size discovery)
 
 ### Code (excerpt from `os/uefi/efi_main.cpp`)
